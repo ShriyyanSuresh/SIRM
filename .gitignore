@@ -1,0 +1,50 @@
+
+# Python
+__pycache__/
+*.py[cod]
+*.pyd
+.pytest_cache/
+
+# Virtual environments
+sirm_env/
+venv/
+.env/
+
+# Secrets
+.env
+.env.*
+!.env.example
+
+# Datasets and generated data
+data/
+datasets/
+*.tif
+*.tiff
+*.jp2
+
+# Model checkpoints
+checkpoints/
+*.pth
+*.pt
+*.ckpt
+*.onnx
+
+# Logs and temporary outputs
+logs/
+runs/
+outputs/
+*.log
+
+# VS Code and OS
+.vscode/
+.DS_Store
+Thumbs.db
+
+worldstrat_reference/
+
+# Temporary debugging images
+debug_*.png
+
+# Generated evaluation files
+*_comparison.csv
+worldstrat_inspection_report.json

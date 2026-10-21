@@ -1,0 +1,87 @@
+# SIRM baseline config
+# Hardware target: RTX 4050 Laptop (6 GB VRAM), i7-13620H, 16 GB RAM
+#
+# Values here are a starting point derived from the official WorldStrat
+# benchmark hyperparameters (see WorldStrat NeurIPS supplementary, Table 1),
+# scaled down for our GPU. NOT yet tuned against real training curves -
+# revisit after the first successful run.
+
+data:
+  root: "data/worldstrat"
+  hr_dir: "hr_dataset"
+  lr_dir: "lr_dataset"
+  metadata_csv: "metadata.csv"
+  split_csv: "stratified_train_val_test_split.csv"
+
+  # ASSUMPTION (documented, unverified): SentinelHub's standard L2A
+  # "all bands" order. If the visual sanity check in
+  # scripts/sanity_check_bands.py doesn't look like a real place in
+  # true color, this ordering is wrong and needs correcting.
+  l2a_band_order: [B01, B02, B03, B04, B05, B06, B07, B08, B8A, B09, B11, B12]
+
+  # Bands we actually feed the model: B02 (Blue), B03 (Green), B04 (Red), B08 (NIR).
+  # Indices into l2a_band_order above.
+  input_band_indices: [1, 2, 3, 7]
+
+  # Official benchmark used 8 of the 16 available revisits for multi-frame.
+  # We do the same - keeps VRAM and I/O bounded while still exploiting
+  # the multi-frame signal WorldStrat was built for.
+  num_revisits: 8
+  revisit_selection: "lowest_cloud"   # options: lowest_cloud, first_n, random
+
+  # Target resolution: 3 m/pixel, matching the WorldStrat authors' own
+  # benchmark (downsampled pansharpened SPOT PS product), NOT the 2.5 m
+  # figure floated earlier - that was our assumption, this is theirs.
+  target_resolution_m: 3.0
+  hr_native_resolution_m: 1.5   # PS product
+  lr_native_resolution_m: 10.0  # Sentinel-2 L2A
+
+  # Patch-based training (required at this VRAM budget - full 158x158x8x4
+  # tiles at 500x500 output would not fit).
+  lr_patch_size: 32      # pixels, at 10 m -> 320 m on the ground
+  # implied HR patch size = lr_patch_size * (lr_native_res / target_res)
+  #                       = 32 * (10/3) ~= 106 -> round to 104 (multiple of 8)
+  hr_patch_size: 104
+
+  train_split_name: "train"
+  val_split_name: "val"
+  test_split_name: "test"
+
+model:
+  name: "sirm_fusion_lite"
+  in_channels: 4          # per-revisit band count (B,G,R,NIR)
+  num_revisits: 8
+  base_channels: 48        # kept modest for 6 GB VRAM; RCAN paper default is 64
+  num_residual_groups: 4
+  num_residual_blocks_per_group: 4
+  reduction_ratio: 16      # channel-attention squeeze ratio
+  out_channels: 4
+  scale_factor: 3.3333     # 10m / 3m, non-integer - handled via bicubic + PixelShuffle residual
+
+training:
+  batch_size: 8            # scaled down from official 48 for 6GB VRAM; use grad accumulation to compensate
+  grad_accumulation_steps: 4   # effective batch size 32
+  num_workers: 4
+  amp: true                # mixed precision, essential on 6 GB
+  max_epochs: 40
+  optimizer: "adamw"
+  learning_rate: 0.0001
+  weight_decay: 0.0001
+  lr_scheduler: "cosine_annealing_warm_restarts"
+  cosine_t0: 10
+  grad_clip_norm: 5.0
+  early_stopping_patience: 8
+  seed: 122938034
+  checkpoint_dir: "checkpoints"
+  log_every_n_steps: 20
+  val_every_n_epochs: 1
+
+loss:
+  # Weighted combination, values inherited from the official WorldStrat
+  # benchmark as a documented starting point (Table 1 of their supplementary).
+  weight_mse: 0.3
+  weight_mae: 0.4
+  weight_ssim: 0.3
+  # Our additions, disabled by default until baseline (Exp 1-4) is validated.
+  weight_sam: 0.0
+  weight_degradation_consistency: 0.0
